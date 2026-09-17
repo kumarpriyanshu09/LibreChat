@@ -200,8 +200,11 @@ export default [
   // class generates CSS and needs Tailwind v4, while this repo runs tailwindcss 3.4 with a JS
   // preset. Its grammar fallback would report every preset utility (`duration-theme-fast`,
   // `rounded-theme-control`, `icon-md`) as a typo.
+  //
+  // The client's entry points and helpers are `.jsx`/`.js` — App.jsx among them — so the globs
+  // name those extensions too: the rules have to see them.
   {
-    files: ['client/src/**/*.{ts,tsx}', 'packages/client/src/**/*.{ts,tsx}'],
+    files: ['client/src/**/*.{ts,tsx,js,jsx}', 'packages/client/src/**/*.{ts,tsx,js,jsx}'],
     plugins: { shadcn },
     settings: {
       shadcn: {
@@ -265,7 +268,10 @@ export default [
     // A primitive owns its own internals, so the rules that police callers are off inside the
     // component library. `no-raw-colors` and `no-inline-styles` stay on: the primitives are
     // where theme tokens matter most.
-    files: ['packages/client/src/**/*.{ts,tsx}', 'client/src/components/ui/**/*.{ts,tsx}'],
+    files: [
+      'packages/client/src/**/*.{ts,tsx,js,jsx}',
+      'client/src/components/ui/**/*.{ts,tsx,js,jsx}',
+    ],
     rules: {
       'shadcn/no-restyle': 'off',
       'shadcn/no-arbitrary-values': 'off',

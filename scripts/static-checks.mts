@@ -35,7 +35,7 @@
  *
  * Flags: --staged, --full, --fast, --only <ids>, --skip <ids>, --verbose,
  * --list. Check ids: eslint, prettier, imports, eslint-config, json,
- * circular-deps, typecheck, config-tests, i18n, depcheck.
+ * suppressions, circular-deps, typecheck, config-tests, i18n, depcheck.
  */
 
 import { fileURLToPath } from 'node:url';
@@ -62,10 +62,23 @@ const FILTERS = {
     'client/**',
     'packages/**',
     'eslint.config.mjs',
+    'eslint-suppressions.json',
     '.github/workflows/static-checks.yml',
     '!**.md',
   ],
   eslint_config: ['eslint.config.mjs', '.github/workflows/static-checks.yml'],
+  // The design-rule backlog is data the lint reads, so a diff that only edits it
+  // reaches no lintable file and would otherwise be checked by nothing.
+  // Deleting or renaming a recorded file has to reach this group too: the entry
+  // it leaves behind would silence whatever next takes that path.
+  suppressions: [
+    'eslint-suppressions.json',
+    '**/eslint-suppressions.json',
+    'client/src/**',
+    'packages/client/src/**',
+    '.github/workflows/static-checks.yml',
+    '!**.md',
+  ],
   config: ['api/**', 'config/**', 'packages/**', '.github/workflows/static-checks.yml', '!**.md'],
   i18n: [
     'api/**',
@@ -135,6 +148,26 @@ const PACKAGE_JSON_FILES = [
   'packages/data-provider/package.json',
   'packages/data-schemas/package.json',
 ];
+
+/** The recorded design-rule backlog ESLint reads on every lint. */
+const SUPPRESSIONS_FILE = 'eslint-suppressions.json';
+
+/**
+ * ESLint's on-disk suppressions shape, which the recorded baseline claims to be:
+ * a count per file, per rule. `validateSuppressions` is what checks the claim, so
+ * the leaf stays `unknown` — a string or a float there is one of the failures.
+ */
+type SuppressionsFile = Record<string, Record<string, { count?: unknown }>>;
+
+/** One file's entry in ESLint's JSON report, as the capacity check reads it. */
+type LintReport = {
+  filePath: string;
+  messages: { ruleId: string | null }[];
+  suppressedMessages?: { ruleId: string | null }[];
+};
+
+/** `@shadcn/lint`'s rule map, the authority on which recorded rule names exist. */
+type SuppressionsPlugin = { plugin: { rules: Record<string, unknown> } };
 
 const I18N_FILE = 'client/src/locales/en/translation.json';
 const I18N_SOURCE_DIRS = [
@@ -546,9 +579,17 @@ function lintChangedFiles(context: CheckContext): CheckOutcome {
   }
   const eslint = resolveBin('eslint');
   if (!eslint) return missingBin('eslint');
+  const built = buildClientPackage();
+  if (built) return built;
 
   // --no-warn-ignored: changed files under config-ignored paths
   // (e.g. packages/data-schemas/misc/**) must not fail --max-warnings=0.
+  // --pass-on-unpruned-suppressions: the @shadcn/lint design rules run at error
+  // against the recorded backlog in eslint-suppressions.json, and fixing one of
+  // those violations leaves its suppression unused, which would otherwise fail the
+  // very diff that fixed it. `npm run lint:design:prune` tightens the counts. The
+  // CI step passes the same flag; a local run that failed here would be a lie about
+  // what the pull request will do.
   const result = runOnFiles(
     eslint,
     [
@@ -557,6 +598,7 @@ function lintChangedFiles(context: CheckContext): CheckOutcome {
       'eslint.config.mjs',
       '--no-warn-ignored',
       '--max-warnings=0',
+      '--pass-on-unpruned-suppressions',
       '--',
     ],
     context.sourceFiles,
@@ -632,6 +674,241 @@ async function validatePackageJson(): Promise<CheckOutcome> {
     }
   }
   return { ok: invalid.length === 0, output: invalid.join('\n') };
+}
+
+/**
+ * The design-rule backlog is the one input to `npm run lint` that is data rather
+ * than code: ESLint loads `eslint-suppressions.json` on every run and silences up
+ * to the count it records for each file and rule. The changed-file lint only ever
+ * points ESLint at JS/TS sources, so a diff that edits the baseline alone reaches
+ * no lintable file — nothing else reads it. Four ways it can stop saying what it
+ * claims: a shape ESLint cannot load, a count no run can ever reach, a rule the
+ * plugin does not define (a rename leaves the old key silencing nothing), and a
+ * path that no longer exists, which is the entry `--prune-suppressions` clears and
+ * which would otherwise silence a future file that reuses the path.
+ *
+ * A diff may carry a baseline that is not the repository's — a generated one, or
+ * a second one under a lane's own directory — so every suppressions file the
+ * target names is validated, and the repository's own is always among them.
+ */
+async function validateSuppressions(context: CheckContext): Promise<CheckOutcome> {
+  const named = context.files.filter((file) => file.endsWith(`/${SUPPRESSIONS_FILE}`));
+  // A diff that deletes the baseline still activates this group, and the
+  // changed-file lint would see no source file to report through: the deletion
+  // has to fail here rather than read as "nothing to validate".
+  if (!existsSync(resolve(ROOT, SUPPRESSIONS_FILE))) {
+    return {
+      ok: false,
+      output: `${SUPPRESSIONS_FILE} is missing: the design rules run at error against it, so removing it exposes the whole recorded backlog.`,
+      hints: ['Restore it, or re-record it with: npm run lint:design:suppress'],
+    };
+  }
+  const targets = [SUPPRESSIONS_FILE, ...named].filter((file) => existsSync(resolve(ROOT, file)));
+
+  const problems: string[] = [];
+  // Read the rule names from the plugin rather than listing them here, so a rule
+  // this stack has not enabled yet is still a valid key and a renamed one is not.
+  let known: Set<string>;
+  try {
+    const { plugin } = (await import('@shadcn/lint')) as SuppressionsPlugin;
+    known = new Set(Object.keys(plugin.rules).map((rule) => `shadcn/${rule}`));
+  } catch (error) {
+    return { ok: false, output: `@shadcn/lint did not load: ${(error as Error).message}` };
+  }
+
+  for (const target of targets) {
+    problems.push(...(await suppressionProblems(target, known)));
+    problems.push(...(await unusedCapacity(target, context)));
+  }
+
+  return {
+    ok: problems.length === 0,
+    output: problems.join('\n'),
+    hints: [
+      'Drop entries for paths that moved or were fixed with: npm run lint:design:prune',
+      'Re-record a moved file with: npm run lint:design:suppress',
+    ],
+  };
+}
+
+/** Everything wrong with one recorded baseline, named by its own path. */
+async function suppressionProblems(target: string, known: Set<string>): Promise<string[]> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(resolve(ROOT, target), 'utf8'));
+  } catch (error) {
+    return [`${target}: ${(error as Error).message}`];
+  }
+
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return [
+      `${target}: expected an object keyed by file path, got ${Array.isArray(parsed) ? 'an array' : typeof parsed}`,
+    ];
+  }
+
+  const problems: string[] = [];
+  for (const [file, rules] of Object.entries(parsed as SuppressionsFile)) {
+    const where = target === SUPPRESSIONS_FILE ? file : `${target} → ${file}`;
+    if (typeof rules !== 'object' || rules === null || Array.isArray(rules)) {
+      problems.push(`${where}: expected an object keyed by rule name`);
+      continue;
+    }
+    if (!existsSync(resolve(ROOT, file))) {
+      problems.push(`${where}: recorded path no longer exists`);
+    }
+    for (const [rule, entry] of Object.entries(rules)) {
+      if (!known.has(rule)) {
+        problems.push(`${where}: ${rule} is not a rule @shadcn/lint defines`);
+      }
+      const count = typeof entry === 'object' && entry !== null ? entry.count : undefined;
+      if (typeof count !== 'number' || !Number.isInteger(count) || count < 1) {
+        problems.push(
+          `${where}: ${rule} records ${JSON.stringify(count) ?? 'nothing'} where a positive integer count belongs`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * A recorded count that no longer matches the file is a hole in both
+ * directions. Higher than the file's violations is capacity the next change can
+ * spend: `--pass-on-unpruned-suppressions` keeps the diff that fixed a violation
+ * committable, and nothing else asks for the count to come down, so a later
+ * violation of the same rule in the same file is silenced by the slack. Lower
+ * than the file's violations only fails while the file is in the changed-file
+ * lint's scope; recorded against an untouched file it is a lint that starts
+ * failing for whoever edits it next.
+ *
+ * The set checked is the files this diff touches plus the files whose entries it
+ * edits — and everything recorded when the baseline is the only thing that
+ * changed, since that edit is precisely the one nothing else re-reads. A
+ * baseline named in the diff is always checked in full: what it silences is its
+ * whole purpose.
+ */
+async function unusedCapacity(target: string, context: CheckContext): Promise<string[]> {
+  let recorded: SuppressionsFile;
+  try {
+    recorded = JSON.parse(await readFile(resolve(ROOT, target), 'utf8')) as SuppressionsFile;
+  } catch {
+    // Shape problems are reported by the validation above; nothing to add here.
+    return [];
+  }
+  if (typeof recorded !== 'object' || recorded === null || Array.isArray(recorded)) return [];
+
+  const touched = new Set(context.sourceFiles.filter((file) => recorded[file]));
+  for (const file of editedEntries(target, context)) if (recorded[file]) touched.add(file);
+  const files = (
+    target !== SUPPRESSIONS_FILE || (touched.size === 0 && context.files.includes(target))
+      ? Object.keys(recorded)
+      : [...touched]
+  ).filter((file) => existsSync(resolve(ROOT, file)));
+  if (files.length === 0) return [];
+
+  const eslint = resolveBin('eslint');
+  if (!eslint) return [`${target}: ESLint is not installed, so recorded counts cannot be checked`];
+  const built = buildClientPackage();
+  if (built) return [`${target}: ${built.output ?? 'the component library did not build'}`];
+  const result = runOnFiles(
+    eslint,
+    [
+      '--no-error-on-unmatched-pattern',
+      '--config',
+      'eslint.config.mjs',
+      '--no-warn-ignored',
+      '--pass-on-unpruned-suppressions',
+      '--format',
+      'json',
+      '--',
+    ],
+    files,
+  );
+  const start = result.stdout.indexOf('[');
+  if (start === -1) return [`${target}: ESLint printed no report for the recorded files`];
+
+  /** `runOnFiles` chunks the argument list to stay under the platform's argv
+   *  limit, so ESLint prints one JSON array per chunk; joining them at the
+   *  `][` boundary reads the whole run as one report. */
+  const report = JSON.parse(result.stdout.slice(start).replace(/\]\s*\[/g, ',')) as LintReport[];
+  const problems: string[] = [];
+  for (const file of report) {
+    const relative = file.filePath.startsWith(ROOT)
+      ? file.filePath
+          .slice(ROOT.length + 1)
+          .split('\\')
+          .join('/')
+      : file.filePath;
+    const actual = new Map<string, number>();
+    for (const message of [...file.messages, ...(file.suppressedMessages ?? [])]) {
+      if (message.ruleId?.startsWith('shadcn/')) {
+        actual.set(message.ruleId, (actual.get(message.ruleId) ?? 0) + 1);
+      }
+    }
+    for (const [rule, entry] of Object.entries(recorded[relative] ?? {})) {
+      const count = typeof entry === 'object' && entry !== null ? entry.count : undefined;
+      if (typeof count !== 'number') continue;
+      const now = actual.get(rule) ?? 0;
+      if (now < count) {
+        problems.push(
+          `${relative}: ${rule} records ${count} but the file now has ${now}; the unused ${count - now} would silence a later violation`,
+        );
+      }
+      if (now > count) {
+        problems.push(
+          `${relative}: ${rule} records ${count} but the file now has ${now}; the ${now - count} beyond the record fail the lint for whoever edits it next`,
+        );
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * The files whose recorded entries this diff edits, read by comparing the
+ * baseline against the merge base. A mixed diff that leaves a file alone while
+ * loosening its entry would otherwise be checked by nothing.
+ */
+function editedEntries(target: string, context: CheckContext): string[] {
+  if (!context.files.includes(target) || !OPTIONS.against) return [];
+  /** The base ref may not carry the baseline at all — the change that adds it is
+   *  exactly one such diff — so this read must not be fatal. */
+  const base = runCommand(GIT, ['show', `${OPTIONS.against}:${target}`]);
+  if (base.status !== 0) return [];
+  let previous: SuppressionsFile;
+  try {
+    previous = JSON.parse(base.stdout) as SuppressionsFile;
+  } catch {
+    return [];
+  }
+  let current: SuppressionsFile;
+  try {
+    current = JSON.parse(readFileSync(resolve(ROOT, target), 'utf8')) as SuppressionsFile;
+  } catch {
+    return [];
+  }
+  return [...new Set([...Object.keys(previous), ...Object.keys(current)])].filter(
+    (file) => JSON.stringify(previous[file]) !== JSON.stringify(current[file]),
+  );
+}
+
+/**
+ * The design rules read each primitive's `cva` variants through the
+ * `@librechat/client` entry point, which resolves to `packages/client/dist`. With
+ * no build present the rules cannot classify what a primitive owns and report
+ * strictly fewer violations — a lint that passes for the wrong reason, and a
+ * recorded baseline that disagrees with the same tree on a machine that did
+ * build. Building here, rather than skipping, is the same choice the config
+ * suite makes below.
+ */
+function buildClientPackage(): CheckOutcome | null {
+  if (existsSync(resolve(ROOT, 'packages/client/dist'))) return null;
+  const build = runCommand(NPM, ['run', 'build:client-package']);
+  if (build.status === 0) return null;
+  return {
+    ok: false,
+    output: `npm run build:client-package failed; the design rules cannot read the primitives' variants without it:\n${build.output}`,
+  };
 }
 
 // --------------------------------------------------------------- config migration tests
@@ -1060,6 +1337,13 @@ const CHECKS: Check[] = [
     tier: 'fast',
     group: 'unused_packages',
     run: validatePackageJson,
+  },
+  {
+    id: 'suppressions',
+    title: 'Design-rule suppressions',
+    tier: 'fast',
+    group: 'suppressions',
+    run: validateSuppressions,
   },
   {
     id: 'circular-deps',
