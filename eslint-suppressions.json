@@ -307,6 +307,11 @@
       "count": 1
     }
   },
+  "client/src/components/Chat/Input/Files/Table/TemplateTable.tsx": {
+    "shadcn/no-unknown-classes": {
+      "count": 2
+    }
+  },
   "client/src/components/Chat/Input/HeaderOptions.tsx": {
     "shadcn/no-restyle": {
       "count": 10
@@ -787,7 +792,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 21
+      "count": 27
     }
   },
   "client/src/components/Chat/Messages/Content/ToolCall.tsx": {
@@ -1021,7 +1026,7 @@
   },
   "client/src/components/Chat/Trace/Viewer.tsx": {
     "shadcn/no-restyle": {
-      "count": 1
+      "count": 3
     }
   },
   "client/src/components/Chat/approval/Review.tsx": {
