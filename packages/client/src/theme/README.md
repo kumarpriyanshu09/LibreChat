@@ -181,6 +181,10 @@ The package requires Tailwind v4 and declares `tailwindcss: ^4.3.3` as a peer de
 published components emit v4-only utilities such as `outline-hidden`, `shadow-xs` and
 `origin-(--radix-…)`, which Tailwind 3 silently generates nothing for.
 
+`tailwindcss-animate` is a peer dependency too, and the preset registers it: the components' own
+`animate-in`, `fade-in-0`, `zoom-in-95` and `slide-in-from-*` classes are its utilities, so a
+consumer that loads the preset gets them without configuring anything.
+
 ### 5. Use Theme Colors in Components
 
 ```tsx

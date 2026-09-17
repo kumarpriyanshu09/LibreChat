@@ -37,6 +37,15 @@ module.exports = {
   },
   plugins: [
     /**
+     * The published components write `animate-in`, `fade-in-0`, `zoom-in-95` and
+     * `slide-in-from-*` (dialogs, popovers, dropdowns), which this plugin owns.
+     * It belongs in the preset rather than in the app's config alone: a consumer
+     * following the documented setup loads only this file, and without it those
+     * classes generate nothing and the surfaces appear without their motion.
+     * Declared as a peer dependency so the consumer's install provides it.
+     */
+    require('tailwindcss-animate'),
+    /**
      * A bare function rather than `plugin()` from `tailwindcss/plugin`, because
      * this preset ships as a raw file through the `./tailwind-preset` export and
      * `tailwindcss` is a devDependency here. Requiring it would fail to resolve

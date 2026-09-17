@@ -1322,11 +1322,6 @@
       "count": 1
     }
   },
-  "client/src/components/Input/ModelSelect/MultiSelectPop.tsx": {
-    "shadcn/no-unknown-classes": {
-      "count": 1
-    }
-  },
   "client/src/components/Input/SetKeyDialog/GoogleConfig.tsx": {
     "shadcn/no-restyle": {
       "count": 1
