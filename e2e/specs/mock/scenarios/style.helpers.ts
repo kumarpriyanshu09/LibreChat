@@ -26,6 +26,45 @@ export function probeStyle(page: Page, classes: string, property: string): Promi
   );
 }
 
+/** A theme custom property as the browser resolves it on the document root. */
+export function themeValue(page: Page, property: string): Promise<string> {
+  return page.evaluate(
+    (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim(),
+    property,
+  );
+}
+
+/**
+ * The placeholder colour a plain field inherits from the app's stylesheet, read
+ * off a throwaway input so no field's own `placeholder:` utility is in the way.
+ */
+export function probePlaceholderColor(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const probe = document.createElement('input');
+    probe.placeholder = 'probe';
+    document.body.append(probe);
+    const color = getComputedStyle(probe, '::placeholder').color;
+    probe.remove();
+    return color;
+  });
+}
+
+/**
+ * Normalise a colour expression — `rgb(227 227 227 / 1)`, `color-mix(...)`, a
+ * token triplet — to the form `getComputedStyle` returns, by letting the browser
+ * compute it. Comparing two normalised values compares colours, not spellings.
+ */
+export function normalizeColor(page: Page, value: string): Promise<string> {
+  return page.evaluate((color) => {
+    const probe = document.createElement('span');
+    probe.style.color = color;
+    document.body.append(probe);
+    const resolved = getComputedStyle(probe).color;
+    probe.remove();
+    return resolved;
+  }, value);
+}
+
 /** Read several computed properties off a rendered element in one round trip. */
 export function computedStyles<K extends string>(
   locator: Locator,
@@ -39,4 +78,16 @@ export function computedStyles<K extends string>(
     }
     return result;
   }, properties) as Promise<Record<K, string>>;
+}
+
+/** Pin the stored appearance so a run's browser colour scheme cannot pick one. */
+export function useStoredTheme(page: Page, theme: 'light' | 'dark'): Promise<void> {
+  return page.addInitScript((selected) => {
+    localStorage.setItem('color-theme', selected);
+    localStorage.setItem('navVisible', 'true');
+    localStorage.removeItem('theme-definition');
+    localStorage.removeItem('theme-source');
+    localStorage.removeItem('theme-colors');
+    localStorage.removeItem('theme-name');
+  }, theme);
 }

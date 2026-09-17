@@ -169,6 +169,10 @@ The published preset supplies the semantic appearance utilities used by theme-aw
 variants, including `h-theme-control`, `rounded-theme-control`, `gap-theme-compact`, and
 `duration-theme-fast`. Keep the preset enabled even when defining additional project utilities.
 
+The package requires Tailwind v4 and declares `tailwindcss: ^4.3.3` as a peer dependency: the
+published components emit v4-only utilities such as `outline-hidden`, `shadow-xs` and
+`origin-(--radix-…)`, which Tailwind 3 silently generates nothing for.
+
 ### 5. Use Theme Colors in Components
 
 ```tsx

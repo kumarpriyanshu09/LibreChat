@@ -744,7 +744,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 27
+      "count": 21
     }
   },
   "client/src/components/Chat/Messages/Content/ToolCall.tsx": {
@@ -833,7 +833,7 @@
   },
   "client/src/components/Chat/Messages/Feedback.tsx": {
     "shadcn/no-restyle": {
-      "count": 18
+      "count": 15
     },
     "shadcn/require-static-classes": {
       "count": 3
@@ -924,7 +924,7 @@
   },
   "client/src/components/Chat/Subagents/SharedSubagentActivityDialog.tsx": {
     "shadcn/no-restyle": {
-      "count": 9
+      "count": 7
     }
   },
   "client/src/components/Chat/Subagents/SubagentActivity.tsx": {
@@ -970,7 +970,7 @@
   },
   "client/src/components/Chat/Trace/Viewer.tsx": {
     "shadcn/no-restyle": {
-      "count": 3
+      "count": 1
     }
   },
   "client/src/components/Chat/approval/Review.tsx": {
@@ -1288,7 +1288,7 @@
   },
   "client/src/components/MCP/MCPConfigDialog.tsx": {
     "shadcn/no-restyle": {
-      "count": 2
+      "count": 1
     }
   },
   "client/src/components/MCP/MCPServerMenuItem.tsx": {
@@ -1306,7 +1306,7 @@
       "count": 3
     },
     "shadcn/no-restyle": {
-      "count": 9
+      "count": 5
     }
   },
   "client/src/components/MCP/StackedMCPIcons.tsx": {
@@ -1394,7 +1394,7 @@
   },
   "client/src/components/Nav/SettingsTabs/Account/Avatar.tsx": {
     "shadcn/no-restyle": {
-      "count": 7
+      "count": 4
     }
   },
   "client/src/components/Nav/SettingsTabs/Account/BackupCodesItem.tsx": {
@@ -1404,12 +1404,12 @@
   },
   "client/src/components/Nav/SettingsTabs/Account/DeleteAccount.tsx": {
     "shadcn/no-restyle": {
-      "count": 21
+      "count": 18
     }
   },
   "client/src/components/Nav/SettingsTabs/Account/TwoFactorAuthentication.tsx": {
     "shadcn/no-restyle": {
-      "count": 5
+      "count": 3
     }
   },
   "client/src/components/Nav/SettingsTabs/Account/TwoFactorPhases/BackupPhase.tsx": {
@@ -1719,7 +1719,7 @@
   },
   "client/src/components/Sharing/GenericGrantAccessDialog.tsx": {
     "shadcn/no-restyle": {
-      "count": 17
+      "count": 14
     },
     "shadcn/require-static-classes": {
       "count": 2
@@ -1932,7 +1932,7 @@
       "count": 1
     },
     "shadcn/no-restyle": {
-      "count": 13
+      "count": 7
     }
   },
   "client/src/components/SidePanel/Agents/Tools/ItemDialog/sections/McpSection.tsx": {
@@ -1961,7 +1961,7 @@
   },
   "client/src/components/SidePanel/Agents/Tools/SkillsDialog.tsx": {
     "shadcn/no-restyle": {
-      "count": 12
+      "count": 11
     }
   },
   "client/src/components/SidePanel/Agents/Tools/SkillsSection.tsx": {
